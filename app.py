@@ -45,11 +45,12 @@ with st.sidebar:
     country_codes = [COUNTRIES[c] for c in selected]
 
 # ── Tabs ─────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Analyze resume",
     "My applications",
     "Daily new jobs",
     "Tailor resume",
+    "Browse jobs",
 ])
 
 # ════════════════════════════════════════════════════════════════
@@ -352,3 +353,102 @@ with tab4:
                     mime="text/plain",
                 )
                 st.success("Tailored resume saved to your profile!")
+
+# ════════════════════════════════════════════════════════════════
+# TAB 5 — Browse jobs
+# ════════════════════════════════════════════════════════════════
+with tab5:
+    st.header("Browse job postings")
+    st.caption("Search real-time jobs from LinkedIn, Indeed, Glassdoor via JSearch — or Adzuna for broader coverage.")
+
+    # ── Filters ─────────────────────────────────────────────────
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        browse_keyword = st.text_input("Keyword", placeholder="e.g. Data Analyst")
+    with col2:
+        browse_country = st.selectbox("Country", options=list(COUNTRIES.keys()))
+    with col3:
+        browse_job_type = st.selectbox("Job type", options=list(JOB_TYPES.keys()))
+    with col4:
+        browse_freshness = st.selectbox("Posted within", options=list(FRESHNESS.keys()))
+    with col5:
+        browse_source = st.selectbox("Source", options=["JSearch (real-time)", "Adzuna"])
+
+    if "browse_page" not in st.session_state:
+        st.session_state["browse_page"] = 1
+
+    search_clicked = st.button("Search jobs", type="primary")
+    if search_clicked:
+        st.session_state["browse_page"] = 1
+
+    # ── Fetch jobs ───────────────────────────────────────────────
+    country_code = COUNTRIES[browse_country]
+    days_old     = FRESHNESS[browse_freshness]
+
+    if browse_source == "JSearch (real-time)":
+        result = browse_jobs_jsearch(
+            keyword=browse_keyword or "data analyst",
+            country_code=country_code,
+            job_type=browse_job_type,
+            days_old=days_old,
+            page=st.session_state["browse_page"],
+        )
+    else:
+        result = browse_jobs_adzuna(
+            keyword=browse_keyword or "data analyst",
+            country_code=country_code,
+            job_type=browse_job_type,
+            days_old=days_old,
+            page=st.session_state["browse_page"],
+            results=10,
+        )
+
+    # ── Results ──────────────────────────────────────────────────
+    if result["error"]:
+        st.error(f"Search error: {result['error']}")
+    else:
+        jobs  = result["jobs"]
+        total = result["total"]
+        st.caption(f"Found **{total:,}** jobs · page {st.session_state['browse_page']}")
+
+        if not jobs:
+            st.info("No jobs found. Try a different keyword, country, or time range.")
+        else:
+            for job in jobs:
+                with st.container():
+                    col_a, col_b = st.columns([5, 1])
+                    with col_a:
+                        source_badge = "🟢 Real-time" if job.get("source") == "jsearch" else "🔵 Adzuna"
+                        st.markdown(f"### {job['title']}  {source_badge}")
+                        st.markdown(
+                            f"🏢 **{job.get('company','N/A')}** &nbsp;|&nbsp; "
+                            f"📍 {job.get('location','N/A')} &nbsp;|&nbsp; "
+                            f"💰 {job.get('salary','Not specified')} &nbsp;|&nbsp; "
+                            f"📅 {job.get('created','N/A')}"
+                        )
+                        if job.get("category"):
+                            st.caption(f"Type: {job['category']}")
+                        with st.expander("View description"):
+                            st.write(job.get("description","No description available."))
+                    with col_b:
+                        st.write("")
+                        st.write("")
+                        if job.get("url"):
+                            st.link_button("Apply →", job["url"])
+                        if st.button("💾 Save", key=f"browse_save_{job.get('adzuna_job_id', job.get('title',''))}"):
+                            save_application(job)
+                            st.success("Saved!")
+                    st.divider()
+
+        # ── Pagination ───────────────────────────────────────────
+        col_prev, _, col_next = st.columns([1, 3, 1])
+        with col_prev:
+            if st.session_state["browse_page"] > 1:
+                if st.button("← Previous"):
+                    st.session_state["browse_page"] -= 1
+                    st.rerun()
+        with col_next:
+            if len(jobs) >= 10:
+                if st.button("Next →"):
+                    st.session_state["browse_page"] += 1
+                    st.rerun()
