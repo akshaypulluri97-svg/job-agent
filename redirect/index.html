@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Signing you in...</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f2f6; }
+    .box { text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h2 { color: #333; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>💼 Job Applications Agent</h2>
+    <p>Signing you in, please wait...</p>
+  </div>
+  <script>
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token') || '';
+    if (access_token) {
+      window.location.href =
+        'https://akshaypulluri97-svg-job-agent-app-ellhd1.streamlit.app?' +
+        'access_token=' + encodeURIComponent(access_token) +
+        '&refresh_token=' + encodeURIComponent(refresh_token);
+    } else {
+      document.querySelector('p').innerHTML = 'Login failed — no token found. Please try again.';
+    }
+  </script>
+</body>
+</html>
