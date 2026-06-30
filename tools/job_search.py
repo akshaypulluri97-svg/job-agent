@@ -105,11 +105,12 @@ def browse_jobs_jsearch(keyword: str, country_code: str, job_type: str = "Any",
             query += f" {country_name}"
 
         params = {
-            "query":           query,
-            "page":            str(page),
-            "num_pages":       "1",
-            "date_posted":     _jsearch_date_filter(days_old),
+            "query":            query,
+            "page":             str(page),
+            "num_pages":        "1",
+            "date_posted":      _jsearch_date_filter(days_old),
             "employment_types": _jsearch_job_type(job_type),
+            "country":          country_code.upper() if country_code else "US",
         }
 
         headers = {
@@ -118,7 +119,7 @@ def browse_jobs_jsearch(keyword: str, country_code: str, job_type: str = "Any",
         }
 
         resp = requests.get(
-            "https://jsearch.p.rapidapi.com/search",
+            "https://jsearch.p.rapidapi.com/search-v2",
             headers=headers,
             params=params,
             timeout=15,
