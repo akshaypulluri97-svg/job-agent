@@ -13,6 +13,7 @@ from utils.db import (
 )
 from tools.resume_parser import extract_text_from_pdf
 from agent.graph import build_graph
+from tools.job_search import COUNTRIES, JOB_TYPES, FRESHNESS, browse_jobs_adzuna, browse_jobs_jsearch
 
 st.set_page_config(page_title="Job Applications Agent", page_icon="💼", layout="wide")
 
