@@ -13,7 +13,7 @@ from utils.db import (
 )
 from tools.resume_parser import extract_text_from_pdf
 from agent.graph import build_graph
-from tools.job_search import COUNTRIES, JOB_TYPES, FRESHNESS, browse_jobs_adzuna, browse_jobs_jsearch
+from tools.job_search import COUNTRIES, JOB_TYPES, FRESHNESS, browse_jobs_adzuna
 
 st.set_page_config(page_title="Job Applications Agent", page_icon="💼", layout="wide")
 
@@ -360,10 +360,10 @@ with tab4:
 # ════════════════════════════════════════════════════════════════
 with tab5:
     st.header("Browse job postings")
-    st.caption("Search real-time jobs from LinkedIn, Indeed, Glassdoor via JSearch — or Adzuna for broader coverage.")
+    st.caption("Search real-time jobs powered by Adzuna across 7 countries.")
 
     # ── Filters ─────────────────────────────────────────────────
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         browse_keyword = st.text_input("Keyword", placeholder="e.g. Data Analyst")
     with col2:
@@ -372,8 +372,6 @@ with tab5:
         browse_job_type = st.selectbox("Job type", options=list(JOB_TYPES.keys()))
     with col4:
         browse_freshness = st.selectbox("Posted within", options=list(FRESHNESS.keys()))
-    with col5:
-        browse_source = st.selectbox("Source", options=["JSearch (real-time)", "Adzuna"])
 
     if "browse_page" not in st.session_state:
         st.session_state["browse_page"] = 1
@@ -386,16 +384,7 @@ with tab5:
     country_code = COUNTRIES[browse_country]
     days_old     = FRESHNESS[browse_freshness]
 
-    if browse_source == "JSearch (real-time)":
-        result = browse_jobs_jsearch(
-            keyword=browse_keyword or "data analyst",
-            country_code=country_code,
-            job_type=browse_job_type,
-            days_old=days_old,
-            page=st.session_state["browse_page"],
-        )
-    else:
-        result = browse_jobs_adzuna(
+    result = browse_jobs_adzuna(
             keyword=browse_keyword or "data analyst",
             country_code=country_code,
             job_type=browse_job_type,
@@ -419,8 +408,7 @@ with tab5:
                 with st.container():
                     col_a, col_b = st.columns([5, 1])
                     with col_a:
-                        source_badge = "🟢 Real-time" if job.get("source") == "jsearch" else "🔵 Adzuna"
-                        st.markdown(f"### {job['title']}  {source_badge}")
+                        st.markdown(f"### {job['title']}")
                         st.markdown(
                             f"🏢 **{job.get('company','N/A')}** &nbsp;|&nbsp; "
                             f"📍 {job.get('location','N/A')} &nbsp;|&nbsp; "

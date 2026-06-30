@@ -47,6 +47,15 @@ def login_screen():
                 st.error(f"Could not send link: {e}")
 
 def require_auth():
+    # ── Local dev bypass ─────────────────────────────────────────
+    if os.getenv("LOCAL_DEV") == "true":
+        if "user" not in st.session_state:
+            class _FakeUser:
+                id    = "00000000-0000-0000-0000-000000000001"
+                email = "dev@localhost"
+            st.session_state["user"] = _FakeUser()
+        return st.session_state["user"]
+    # ─────────────────────────────────────────────────────────────
     if handle_token_from_url():
         st.rerun()
     user = get_current_user()
@@ -54,3 +63,5 @@ def require_auth():
         return user
     login_screen()
     st.stop()
+
+

@@ -3,7 +3,6 @@ import requests
 
 ADZUNA_APP_ID  = os.getenv("ADZUNA_APP_ID")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
-JSEARCH_API_KEY = os.getenv("JSEARCH_API_KEY")
 
 COUNTRIES = {
     "Canada":    "ca",
@@ -26,14 +25,15 @@ JOB_TYPES = {
 }
 
 FRESHNESS = {
-    "Any time":     None,
+    "Any time":      None,
     "Last 24 hours": 1,
     "Last 3 days":   3,
     "Last week":     7,
 }
 
+
 def search_jobs(query: str, country_codes: list, results_per_country: int = 3) -> list:
-    """Search Adzuna for jobs across multiple countries (used by agent)."""
+    """Search Adzuna for jobs across multiple countries (used by the LangGraph agent)."""
     all_jobs = []
     for code in country_codes:
         try:
@@ -53,9 +53,16 @@ def search_jobs(query: str, country_codes: list, results_per_country: int = 3) -
             continue
     return all_jobs
 
-def browse_jobs_adzuna(keyword: str, country_code: str, job_type: str = "Any",
-                        days_old: int = None, page: int = 1, results: int = 10) -> dict:
-    """Browse Adzuna jobs with filters."""
+
+def browse_jobs_adzuna(
+    keyword: str,
+    country_code: str,
+    job_type: str = "Any",
+    days_old: int = None,
+    page: int = 1,
+    results: int = 10,
+) -> dict:
+    """Browse Adzuna with keyword / job-type / freshness filters and pagination."""
     try:
         query = keyword.strip().replace(" ", "+") or "software"
         if job_type == "Remote":
@@ -68,8 +75,7 @@ def browse_jobs_adzuna(keyword: str, country_code: str, job_type: str = "Any",
             f"&content-type=application/json"
         )
 
-        type_params = JOB_TYPES.get(job_type, {})
-        for k, v in type_params.items():
+        for k, v in JOB_TYPES.get(job_type, {}).items():
             params += f"&{k}={v}"
 
         if days_old:
@@ -89,72 +95,35 @@ def browse_jobs_adzuna(keyword: str, country_code: str, job_type: str = "Any",
     except Exception as e:
         return {"jobs": [], "total": 0, "error": str(e)}
 
-def browse_jobs_jsearch(keyword: str, country_code: str, job_type: str = "Any",
-                         days_old: int = None, page: int = 1) -> dict:
-    """Browse JSearch jobs — pulls from LinkedIn, Indeed, Glassdoor in real-time."""
-    try:
-        if not JSEARCH_API_KEY:
-            return {"jobs": [], "total": 0, "error": "JSearch API key not set"}
 
-        query = keyword.strip() or "software engineer"
-        if job_type == "Remote":
-            query += " remote"
+def _safe_company_name(company_field) -> str:
+    """Adzuna sometimes returns company as a dict, sometimes as a plain string."""
+    if isinstance(company_field, dict):
+        return company_field.get("display_name", "")
+    if isinstance(company_field, str):
+        return company_field
+    return ""
 
-        country_name = COUNTRY_NAMES.get(country_code, "")
-        if country_name:
-            query += f" {country_name}"
 
-        params = {
-            "query":            query,
-            "page":             str(page),
-            "num_pages":        "1",
-            "date_posted":      _jsearch_date_filter(days_old),
-            "employment_types": _jsearch_job_type(job_type),
-            "country":          country_code.upper() if country_code else "US",
-        }
+def _safe_location_name(location_field) -> str:
+    """Adzuna sometimes returns location as a dict, sometimes as a plain string."""
+    if isinstance(location_field, dict):
+        return location_field.get("display_name", "")
+    if isinstance(location_field, str):
+        return location_field
+    return ""
 
-        headers = {
-            "X-RapidAPI-Key":  JSEARCH_API_KEY,
-            "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
-        }
 
-        resp = requests.get(
-            "https://jsearch.p.rapidapi.com/search-v2",
-            headers=headers,
-            params=params,
-            timeout=15,
-        )
+def _safe_category_name(category_field) -> str:
+    if isinstance(category_field, dict):
+        return category_field.get("label", "")
+    if isinstance(category_field, str):
+        return category_field
+    return ""
 
-        if resp.status_code != 200:
-            return {"jobs": [], "total": 0, "error": f"JSearch error {resp.status_code}"}
-
-        data = resp.json()
-        jobs = [_parse_jsearch_job(j) for j in data.get("data", [])]
-        return {"jobs": jobs, "total": len(jobs), "error": None}
-
-    except Exception as e:
-        return {"jobs": [], "total": 0, "error": str(e)}
-
-def _jsearch_date_filter(days_old: int) -> str:
-    if not days_old:
-        return "all"
-    if days_old <= 1:
-        return "today"
-    if days_old <= 3:
-        return "3days"
-    return "week"
-
-def _jsearch_job_type(job_type: str) -> str:
-    mapping = {
-        "Full time": "FULLTIME",
-        "Part time": "PARTTIME",
-        "Contract":  "CONTRACTOR",
-        "Remote":    "FULLTIME",
-        "Any":       "",
-    }
-    return mapping.get(job_type, "")
 
 def _parse_adzuna_job(job: dict, country_code: str) -> dict:
+    """Normalise a raw Adzuna job dict to a common shape."""
     salary_min = job.get("salary_min")
     salary_max = job.get("salary_max")
     if salary_min and salary_max:
@@ -170,8 +139,8 @@ def _parse_adzuna_job(job: dict, country_code: str) -> dict:
 
     return {
         "title":         job.get("title", ""),
-        "company":       job.get("company", {}).get("display_name", ""),
-        "location":      job.get("location", {}).get("display_name", ""),
+        "company":       _safe_company_name(job.get("company")),
+        "location":      _safe_location_name(job.get("location")),
         "country":       COUNTRY_NAMES.get(country_code, country_code),
         "country_code":  country_code,
         "description":   job.get("description", "")[:1500],
@@ -179,34 +148,6 @@ def _parse_adzuna_job(job: dict, country_code: str) -> dict:
         "adzuna_job_id": str(job.get("id", "")),
         "salary":        salary,
         "created":       created,
-        "category":      job.get("category", {}).get("label", ""),
+        "category":      _safe_category_name(job.get("category")),
         "source":        "adzuna",
-    }
-
-def _parse_jsearch_job(job: dict) -> dict:
-    salary_min = job.get("job_min_salary")
-    salary_max = job.get("job_max_salary")
-    currency   = job.get("job_salary_currency", "USD")
-    if salary_min and salary_max:
-        salary = f"{currency} {int(salary_min):,} – {int(salary_max):,}"
-    elif salary_min:
-        salary = f"From {currency} {int(salary_min):,}"
-    else:
-        salary = "Not specified"
-
-    posted = job.get("job_posted_at_datetime_utc", "")[:10] if job.get("job_posted_at_datetime_utc") else ""
-
-    return {
-        "title":         job.get("job_title", ""),
-        "company":       job.get("employer_name", ""),
-        "location":      f"{job.get('job_city', '')} {job.get('job_country', '')}".strip(),
-        "country":       job.get("job_country", ""),
-        "country_code":  "",
-        "description":   job.get("job_description", "")[:1500],
-        "url":           job.get("job_apply_link", ""),
-        "adzuna_job_id": job.get("job_id", ""),
-        "salary":        salary,
-        "created":       posted,
-        "category":      job.get("job_employment_type", ""),
-        "source":        "jsearch",
     }
