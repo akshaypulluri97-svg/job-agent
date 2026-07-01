@@ -13,6 +13,8 @@ from utils.db import (
 )
 from tools.resume_parser import extract_text_from_pdf
 from agent.graph import build_graph
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage
 from tools.job_search import COUNTRIES, JOB_TYPES, FRESHNESS, browse_jobs_adzuna
 
 st.set_page_config(page_title="Job Applications Agent", page_icon="💼", layout="wide")
@@ -362,6 +364,8 @@ with tab5:
     st.header("Browse job postings")
     st.caption("Search real-time jobs powered by Adzuna across 7 countries.")
 
+    profile = get_profile()
+
     # ── Filters ─────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -427,6 +431,58 @@ with tab5:
                         if st.button("💾 Save", key=f"browse_save_{job.get('adzuna_job_id', job.get('title',''))}"):
                             save_application(job)
                             st.success("Saved!")
+
+                    job_key = job.get("adzuna_job_id", job.get("title", ""))
+                    if profile:
+                        custom_instructions = st.text_input(
+                            "Custom tailoring instructions (optional)",
+                            placeholder="e.g. Emphasize my Python experience, highlight leadership roles",
+                            key=f"instructions_{job_key}",
+                        )
+                        if st.button("✨ Tailor resume", key=f"tailor_{job_key}"):
+                            with st.spinner("Tailoring your resume…"):
+                                graph = build_graph()
+                                t_result = graph.invoke({
+                                    "resume_text":           profile["resume_text"],
+                                    "skills":                profile["skills"],
+                                    "experience_summary":    profile["experience_summary"],
+                                    "job_query":             "",
+                                    "country_codes":         [],
+                                    "jobs":                  [],
+                                    "analysis_results":      [],
+                                    "tailoring_suggestions": [],
+                                    "accepted_rewrites":     [],
+                                    "tailored_resume_text":  "",
+                                    "target_jd":             job.get("description", ""),
+                                    "custom_instructions":   custom_instructions or None,
+                                    "error":                 None,
+                                })
+                                suggestions = t_result.get("tailoring_suggestions", [])
+                                tailored = profile["resume_text"]
+                                for s in suggestions:
+                                    tailored = tailored.replace(s.get("original", ""), s.get("rewritten", ""))
+                                save_tailored_resume(
+                                    application_id=None,
+                                    job_title=job.get("title", ""),
+                                    company=job.get("company", ""),
+                                    original_text=profile["resume_text"],
+                                    tailored_text=tailored,
+                                    suggestions=suggestions,
+                                )
+                            st.success(f"Done! {len(suggestions)} changes applied.")
+                            dl1, dl2 = st.columns(2)
+                            with dl1:
+                                st.download_button(
+                                    "⬇️ Download .txt",
+                                    data=tailored,
+                                    file_name=f"tailored_{job.get('title','resume').replace(' ','_')}.txt",
+                                    mime="text/plain",
+                                    key=f"dl_txt_{job_key}",
+                                )
+                            with dl2:
+                                st.info("PDF export coming soon")
+                    else:
+                        st.caption("Upload resume to enable tailoring")
                     st.divider()
 
         # ── Pagination ───────────────────────────────────────────

@@ -85,6 +85,7 @@ def tailor_node(state: AgentState) -> AgentState:
         prompt = TAILOR_PROMPT.format(
             resume_text=state["resume_text"],
             job_description=state["target_jd"],
+            custom_instructions=state.get("custom_instructions") or "None provided.",
         )
         response = llm.invoke([HumanMessage(content=prompt)])
         data = parse_llm_json(response.content)

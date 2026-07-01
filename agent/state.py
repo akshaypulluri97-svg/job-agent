@@ -13,4 +13,5 @@ class AgentState(TypedDict):
     accepted_rewrites:      list[dict]
     tailored_resume_text:   str
     target_jd:              Optional[str]
+    custom_instructions:    Optional[str]
     error:                  Optional[str]

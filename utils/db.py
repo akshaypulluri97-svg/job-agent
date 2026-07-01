@@ -11,6 +11,8 @@ def _uid() -> str:
     return st.session_state["user"].id
 
 def get_profile() -> dict:
+    if os.getenv("LOCAL_DEV") == "true":
+        return st.session_state.get("_profile")
     try:
         res = get_supabase().table("resume_profiles").select("*").eq("user_id", _uid()).execute()
         return res.data[0] if res.data else None
@@ -18,6 +20,13 @@ def get_profile() -> dict:
         return None
 
 def save_profile(resume_text: str, skills: list, experience_summary: str):
+    if os.getenv("LOCAL_DEV") == "true":
+        st.session_state["_profile"] = {
+            "resume_text":        resume_text,
+            "skills":             skills,
+            "experience_summary": experience_summary,
+        }
+        return
     try:
         get_supabase().table("resume_profiles").upsert({
             "user_id":            _uid(),
