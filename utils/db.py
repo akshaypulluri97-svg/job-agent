@@ -103,6 +103,8 @@ def mark_jobs_seen(job_ids: list):
 
 def save_tailored_resume(application_id, job_title, company,
                           original_text, tailored_text, suggestions):
+    if os.getenv("LOCAL_DEV") == "true":
+        return
     try:
         get_supabase().table("tailored_resumes").insert({
             "user_id":        _uid(),

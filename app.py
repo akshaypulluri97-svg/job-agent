@@ -16,6 +16,7 @@ from agent.graph import build_graph
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from tools.job_search import COUNTRIES, JOB_TYPES, FRESHNESS, browse_jobs_adzuna
+from utils.pdf_export import resume_to_pdf
 
 st.set_page_config(page_title="Job Applications Agent", page_icon="💼", layout="wide")
 
@@ -480,7 +481,17 @@ with tab5:
                                     key=f"dl_txt_{job_key}",
                                 )
                             with dl2:
-                                st.info("PDF export coming soon")
+                                try:
+                                    pdf_bytes = resume_to_pdf(tailored)
+                                    st.download_button(
+                                        "⬇️ Download PDF",
+                                        data=pdf_bytes,
+                                        file_name=f"tailored_{job.get('title','resume').replace(' ','_')}.pdf",
+                                        mime="application/pdf",
+                                        key=f"dl_pdf_{job_key}",
+                                    )
+                                except Exception as e:
+                                    st.warning(f"PDF export failed: {e}")
                     else:
                         st.caption("Upload resume to enable tailoring")
                     st.divider()
