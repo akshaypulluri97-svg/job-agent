@@ -14,4 +14,6 @@ class AgentState(TypedDict):
     tailored_resume_text:   str
     target_jd:              Optional[str]
     custom_instructions:    Optional[str]
+    ats_keywords:           Optional[dict]
+    ats_gap:                Optional[dict]
     error:                  Optional[str]

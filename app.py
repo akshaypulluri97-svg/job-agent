@@ -471,6 +471,35 @@ with tab5:
                                     suggestions=suggestions,
                                 )
                             st.success(f"Done! {len(suggestions)} changes applied.")
+
+                            # ── ATS Gap Analysis ─────────────────────────
+                            ats_gap = t_result.get("ats_gap", {})
+                            ats_keywords = t_result.get("ats_keywords", {})
+                            ats_score = ats_gap.get("ats_score", 0)
+
+                            score_color = "green" if ats_score >= 70 else "orange" if ats_score >= 45 else "red"
+                            st.markdown(f"**ATS Match Score:** :{score_color}[{ats_score}%]")
+                            if ats_gap.get("summary"):
+                                st.caption(ats_gap["summary"])
+
+                            kw_col1, kw_col2, kw_col3 = st.columns(3)
+                            with kw_col1:
+                                st.write("**🔴 Critical gaps**")
+                                for w in ats_gap.get("missing_critical", [])[:6]:
+                                    st.markdown(f"- `{w}`")
+                            with kw_col2:
+                                st.write("**🟡 Preferred gaps**")
+                                for w in ats_gap.get("missing_preferred", [])[:6]:
+                                    st.markdown(f"- `{w}`")
+                            with kw_col3:
+                                st.write("**✅ Matched**")
+                                for w in ats_gap.get("matched", [])[:6]:
+                                    st.markdown(f"- `{w}`")
+
+                            if ats_keywords.get("tools_platforms"):
+                                st.caption(f"**Tools in JD:** {', '.join(ats_keywords['tools_platforms'])}")
+                            st.divider()
+
                             dl1, dl2 = st.columns(2)
                             with dl1:
                                 st.download_button(
