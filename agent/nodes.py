@@ -10,7 +10,7 @@ from utils.prompts import (
 )
 from agent.state import AgentState
 
-llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.3)
+llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.3)
 
 
 def extract_node(state: AgentState) -> AgentState:
