@@ -78,13 +78,58 @@ def analyze_node(state: AgentState) -> AgentState:
     return {**state, "analysis_results": results}
 
 
+def _calculate_ats_score(gap: dict, ats_keywords: dict) -> int:
+    """Calculate weighted ATS score from gap analysis results."""
+    critical_matched  = len([k for k in gap.get("matched", [])
+                             if k in ats_keywords.get("must_have", [])])
+    preferred_matched = len([k for k in gap.get("matched", [])
+                             if k in ats_keywords.get("preferred", [])])
+    partial_matched   = len(gap.get("partial", []))
+    total_critical    = len(ats_keywords.get("must_have", []))
+    total_preferred   = len(ats_keywords.get("preferred", []))
+    max_score         = (total_critical * 3) + (total_preferred * 1)
+
+    if max_score > 0:
+        raw_score = (critical_matched * 3) + (preferred_matched * 1) + (partial_matched * 1.5)
+        return min(100, round((raw_score / max_score) * 100))
+    else:
+        total_keywords = (len(gap.get("matched", [])) +
+                         len(gap.get("missing_critical", [])) +
+                         len(gap.get("missing_preferred", [])))
+        matched = len(gap.get("matched", []))
+        return round((matched / total_keywords) * 100) if total_keywords > 0 else 0
+
+
+def _run_gap_analysis(resume_text: str, ats_keywords: dict) -> dict:
+    """Run ATS gap analysis on a given resume text."""
+    try:
+        gap_prompt = ATS_GAP_PROMPT.format(
+            resume_text=resume_text[:2000],
+            must_have=", ".join(ats_keywords.get("must_have", [])),
+            preferred=", ".join(ats_keywords.get("preferred", [])),
+            tools_platforms=", ".join(ats_keywords.get("tools_platforms", [])),
+            job_functions=", ".join(ats_keywords.get("job_functions", [])),
+        )
+        gap_response = llm.invoke([HumanMessage(content=gap_prompt)])
+        gap = parse_llm_json(gap_response.content)
+    except Exception:
+        gap = {
+            "matched": [], "missing_critical": [],
+            "missing_preferred": [], "partial": [],
+            "ats_score": 0, "summary": ""
+        }
+    gap["ats_score"] = _calculate_ats_score(gap, ats_keywords)
+    return gap
+
+
 def tailor_node(state: AgentState) -> AgentState:
     """
     Full ATS-powered tailoring pipeline:
     1. Extract ATS keywords from JD
-    2. Gap analysis — resume vs ATS keywords
-    3. Calculate weighted ATS score ourselves
-    4. Tailor resume using missing keywords + custom instructions
+    2. Gap analysis on ORIGINAL resume → before_score
+    3. Tailor resume using missing keywords + custom instructions
+    4. Gap analysis on TAILORED resume → after_score
+    5. Return before/after scores + suggestions
     """
     if not state.get("target_jd"):
         return {**state, "tailoring_suggestions": [], "ats_gap": {}, "ats_keywords": {}}
@@ -96,57 +141,21 @@ def tailor_node(state: AgentState) -> AgentState:
         ats_prompt = ATS_EXTRACT_PROMPT.format(job_description=jd_text[:2000])
         ats_response = llm.invoke([HumanMessage(content=ats_prompt)])
         ats_keywords = parse_llm_json(ats_response.content)
-    except Exception as e:
+    except Exception:
         ats_keywords = {
             "must_have": [], "preferred": [],
             "tools_platforms": [], "certifications": [], "job_functions": []
         }
 
-    # ── Step 2: Gap analysis ─────────────────────────────────────
-    try:
-        gap_prompt = ATS_GAP_PROMPT.format(
-            resume_text=state["resume_text"][:2000],
-            must_have=", ".join(ats_keywords.get("must_have", [])),
-            preferred=", ".join(ats_keywords.get("preferred", [])),
-            tools_platforms=", ".join(ats_keywords.get("tools_platforms", [])),
-            job_functions=", ".join(ats_keywords.get("job_functions", [])),
-        )
-        gap_response = llm.invoke([HumanMessage(content=gap_prompt)])
-        gap_analysis = parse_llm_json(gap_response.content)
-    except Exception as e:
-        gap_analysis = {
-            "matched": [], "missing_critical": [],
-            "missing_preferred": [], "partial": [],
-            "ats_score": 0, "summary": ""
-        }
+    # ── Step 2: Gap analysis on ORIGINAL resume ──────────────────
+    before_gap = _run_gap_analysis(state["resume_text"], ats_keywords)
+    before_score = before_gap["ats_score"]
 
-    # ── Step 3: Calculate weighted ATS score ─────────────────────
-    critical_matched  = len([k for k in gap_analysis.get("matched", [])
-                             if k in ats_keywords.get("must_have", [])])
-    preferred_matched = len([k for k in gap_analysis.get("matched", [])
-                             if k in ats_keywords.get("preferred", [])])
-    partial_matched   = len(gap_analysis.get("partial", []))
-    total_critical    = len(ats_keywords.get("must_have", []))
-    total_preferred   = len(ats_keywords.get("preferred", []))
-    max_score         = (total_critical * 3) + (total_preferred * 1)
-
-    if max_score > 0:
-        raw_score = (critical_matched * 3) + (preferred_matched * 1) + (partial_matched * 1.5)
-        ats_score = min(100, round((raw_score / max_score) * 100))
-    else:
-        total_keywords = (len(gap_analysis.get("matched", [])) +
-                         len(gap_analysis.get("missing_critical", [])) +
-                         len(gap_analysis.get("missing_preferred", [])))
-        matched   = len(gap_analysis.get("matched", []))
-        ats_score = round((matched / total_keywords) * 100) if total_keywords > 0 else 0
-
-    gap_analysis["ats_score"] = ats_score
-
-    # ── Step 4: Tailor resume ────────────────────────────────────
+    # ── Step 3: Tailor resume ────────────────────────────────────
     try:
         missing_keywords = (
-            gap_analysis.get("missing_critical", []) +
-            gap_analysis.get("missing_preferred", [])
+            before_gap.get("missing_critical", []) +
+            before_gap.get("missing_preferred", [])
         )
         tailor_prompt = TAILOR_PROMPT.format(
             resume_text=state["resume_text"],
@@ -157,12 +166,26 @@ def tailor_node(state: AgentState) -> AgentState:
         tailor_response = llm.invoke([HumanMessage(content=tailor_prompt)])
         tailor_data = parse_llm_json(tailor_response.content)
         suggestions = tailor_data.get("suggestions", [])
-    except Exception as e:
+        print("DEBUG first original:", suggestions[0]["original"][:100] if suggestions else "none")
+        print("DEBUG resume start:", state["resume_text"][:200])
+    except Exception:
         suggestions = []
+
+    # ── Step 4: Apply suggestions and run gap analysis on tailored resume ──
+    tailored_text = state["resume_text"]
+    for s in suggestions:
+        tailored_text = tailored_text.replace(s.get("original", ""), s.get("rewritten", ""))
+
+    after_gap = _run_gap_analysis(tailored_text, ats_keywords)
+    after_score = after_gap["ats_score"]
+
+    # Merge after_gap with summary from before_gap
+    after_gap["before_score"] = before_score
+    after_gap["after_score"]  = after_score
 
     return {
         **state,
         "tailoring_suggestions": suggestions,
         "ats_keywords":          ats_keywords,
-        "ats_gap":               gap_analysis,
+        "ats_gap":               after_gap,
     }
